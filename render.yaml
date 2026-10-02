@@ -27,7 +27,7 @@ services:
         sync: false
 
       - key: CHECK_INTERVAL_SECONDS
-        value: "15"
+        value: "10"
 
       - key: DATABASE_PATH
         value: "instawatch.db"

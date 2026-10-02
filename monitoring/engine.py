@@ -86,7 +86,7 @@ class MonitoringEngine:
         self.bot = bot
 
         self.interval = max(
-            15,
+            10,
             interval_seconds,
         )
 
@@ -108,7 +108,7 @@ class MonitoringEngine:
         # }
         self.confirmations = {}
 
-        self.confirmation_required = 3
+        self.confirmation_required = 2
 
     # =====================================================
     # START
