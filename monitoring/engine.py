@@ -86,7 +86,7 @@ class MonitoringEngine:
         self.bot = bot
 
         self.interval = max(
-            10,
+            15,
             interval_seconds,
         )
 
@@ -100,13 +100,7 @@ class MonitoringEngine:
         self.browser = None
 
         # Maximum number of simultaneous Instagram checks.
-        self.browser_sem = asyncio.Semaphore(2)
-
-        # Per-account HTTP 429 backoff.
-        self.rate_limit_until = {}
-        self.rate_limit_level = {}
-        self.rate_limit_base = 60
-        self.rate_limit_max = 15 * 60
+        self.browser_sem = asyncio.Semaphore(5)
 
         # account_id -> {
         #     "status": Status,
@@ -436,41 +430,10 @@ class MonitoringEngine:
                         body_text,
                     )
 
-                if status_code == 429:
-                    account_id = getattr(self, "_current_account_id", None)
-
-                    if account_id is not None:
-                        level = self.rate_limit_level.get(account_id, 0) + 1
-                        self.rate_limit_level[account_id] = level
-
-                        cooldown = min(
-                            self.rate_limit_base * (2 ** (level - 1)),
-                            self.rate_limit_max,
-                        )
-
-                        self.rate_limit_until[account_id] = (
-                            asyncio.get_running_loop().time() + cooldown
-                        )
-
-                        log.warning(
-                            "@%s rate limited (HTTP 429). "
-                            "Cooldown=%ss level=%s",
-                            username,
-                            cooldown,
-                            level,
-                        )
-
-                    return BrowserResult(
-                        Status.UNKNOWN,
-                        "LOW",
-                        "HTTP 429 - rate limited",
-                        title,
-                        body_text,
-                    )
-
                 if status_code in (
                     401,
                     403,
+                    429,
                     500,
                     502,
                     503,
@@ -556,38 +519,7 @@ class MonitoringEngine:
 
     async def check_one(self, account):
         username = account["username"]
-        account_id = account["id"]
-
-        # Skip this account while Instagram's HTTP 429 cooldown is active.
-        now = asyncio.get_running_loop().time()
-        cooldown_until = self.rate_limit_until.get(account_id, 0)
-
-        if now < cooldown_until:
-            remaining = int(cooldown_until - now)
-
-            log.info(
-                "@%s skipped because of HTTP 429 cooldown: %ss remaining",
-                username,
-                remaining,
-            )
-            return
-
-        # Make the account ID available to browser_check so a 429
-        # can start a per-account cooldown.
-        self._current_account_id = account_id
-
-        try:
-            result = await self.browser_check(username)
-        finally:
-            self._current_account_id = None
-
-        # A successful/non-429 result resets the backoff.
-        if not (
-            result.status == Status.UNKNOWN
-            and "HTTP 429" in result.reason
-        ):
-            self.rate_limit_level.pop(account_id, None)
-            self.rate_limit_until.pop(account_id, None)
+        result = await self.browser_check(username)
 
         log.info(
             "@%s -> %s (%s) - %s",
