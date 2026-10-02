@@ -5,3 +5,4 @@ __pycache__/
 instawatch.db
 screenshots/*
 !screenshots/.gitkeep
+!screenshots/capture.py
